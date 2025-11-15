@@ -1,0 +1,463 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>GenAI Vocabulary Relationship Graph</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    #header { padding: 12px; background: #0b5fff; color: white; }
+    #controls { padding: 10px; }
+    #chart { width: 100%; height: 720px; border-top: 1px solid #ddd; }
+    .legend { font-size: 13px; }
+    .tooltip { position: absolute; pointer-events: none; background: rgba(0,0,0,0.8); color: white; padding: 6px 8px; border-radius: 4px; font-size: 13px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid #eee; text-align: left; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h2>GenAI Vocabulary — Relationship Graph (Explicit vs Implicit usage)</h2>
+  </div>
+  <div id="controls">
+    <button id="btn-refresh">Compute & Render</button>
+    <button id="btn-export">Export PNG</button>
+    <span style="margin-left:12px;">Legend:</span>
+    <span class="legend" style="margin-left:8px; color:steelblue;">● Explicit (exact phrase)</span>
+    <span class="legend" style="margin-left:8px; color:orange;">● Implicit (token-level / related)</span>
+  </div>
+  <div id="chart"></div>
+  <div id="table" style="padding:12px;"></div>
+
+  <div id="tooltip" class="tooltip" style="display:none"></div>
+
+  <script>
+  // Embedded files (extracted from repo)
+  const vocabMarkdown = `
+  # GenAI Vocabulary — Key Terms for Practitioners
+
+  This glossary lists concise, high-value terms you should know and use when acting as a subject-matter expert in generative-AI application development and usage. Each entry includes a short definition, why it matters, and an example usage phrase.
+
+  ---
+
+  - **LLM (Large Language Model):** A neural network trained on large corpora of text to generate or understand language. Why it matters: core building block for text generation, summarization, and conversational agents. Example: "We evaluated two LLM variants for latency and factuality."
+
+  - **Token / Tokenization:** The unit of text (subword/wordpiece) that a model processes; tokenization is the mapping from raw text to tokens. Why it matters: token counts determine cost, context limits, and truncation behavior. Example: "Trim prompts to 1,024 tokens to fit the model's context window."
+
+  - **Context Window / Context Length:** The maximum number of tokens an LLM can attend to in a single forward pass. Why it matters: limits long-document reasoning and multi-turn history. Example: "Use retrieval to include long history because the model has a 4k token context window."
+
+  - **Prompt Engineering:** The craft of designing prompts or templates to elicit desired model behavior. Why it matters: simple prompts can greatly change output quality and safety. Example: "Add an explicit format instruction at the top of the prompt."
+
+  - **Instruction Tuning / SFT (Supervised Fine-Tuning):** Fine-tuning a base model on instruction-response examples to make it follow prompts better. Why it matters: improves controllability and usefulness for end tasks. Example: "We instruction-tuned the model on 10k QA pairs for better assistant responses."
+
+  - **RLHF (Reinforcement Learning from Human Feedback):** Using human preferences to further train models with reinforcement learning to improve aligned behavior. Why it matters: reduces undesirable outputs and improves helpfulness. Example: "RLHF reduced aggressive responses in the assistant."
+
+  - **Fine-tuning (Full / PEFT / LoRA):** Adapting a model to a task; PEFT (Parameter-Efficient Fine-Tuning) methods like LoRA change fewer weights to save compute. Why it matters: customizes models without retraining massively. Example: "We used LoRA to fine-tune on domain text with limited GPU memory."
+
+  - **Quantization (int8 / int4):** Reducing numerical precision of weights/activations to shrink model size and speed inference. Why it matters: enables lower-cost deployment and edge inference. Example: "Quantizing to int8 cut GPU memory by ~2x with minor quality loss."
+
+  - **Distillation / Knowledge Distillation:** Training a smaller 'student' model to imitate a larger 'teacher' model. Why it matters: creates efficient models for production while preserving performance. Example: "Distillation produced a 3× faster model for mobile clients."
+
+  - **Hallucination:** When a model generates plausible-sounding but incorrect or fabricated information. Why it matters: a primary source of trust and safety failures. Example: "The model hallucinated a citation not present in the knowledge base."
+
+  - **Grounding / Retrieval-Augmented Generation (RAG):** Combining retrieval (vector or DB) with generation so responses cite or depend on external documents. Why it matters: improves factuality and provenance. Example: "We use RAG to ground answers in the customer's policy docs."
+
+  - **Embeddings:** Numeric vector representations of text (sentences, docs) that encode semantic similarity. Why it matters: basis for semantic search, clustering, and RAG. Example: "Store paragraph embeddings in a vector index and query nearest neighbors."
+
+  - **Vector Index / Vector DB / ANN (e.g., FAISS, HNSW, Pinecone):** Data structures and services for fast nearest-neighbor search over embeddings. Why it matters: enables scalable semantic retrieval. Example: "Use HNSW for sub-second nearest-neighbor lookups."
+
+  - **Provenance / Attribution:** Tracking the source and lineage of content and model outputs. Why it matters: required for audits, compliance, and reducing hallucinations. Example: "Include provenance metadata with every generated answer."
+
+  - **Model Drift / Data Drift:** When model behavior or input data distribution changes over time, reducing performance. Why it matters: necessitates monitoring and retraining. Example: "We detected concept drift after a product redesign and scheduled a retrain."
+
+  - **Evaluation Metrics (Factuality, ROUGE, BLEU, Perplexity, Human Eval):** Quantitative and human measures for quality assessment. Why it matters: choose metrics aligned with business goals. Example: "Perplexity improved but human eval flagged lower factuality."
+
+  - **Safety / Alignment:** Techniques and practices ensuring models follow desired norms and avoid harmful outputs. Why it matters: compliance, user trust, and risk mitigation. Example: "We applied safety filters and an on-call review workflow for flagged outputs."
+
+  - **Filtering / Moderation / Guardrails:** Automated and human checks to block disallowed content. Why it matters: prevents abuse and legal exposure. Example: "Responses pass through a moderation filter before returning to users."
+
+  - **Watermarking (Model Watermarks):** Methods to embed a detectable signature into generated content for provenance and misuse detection. Why it matters: attribution and abuse detection. Example: "We add a subtle watermark to AI-generated articles."
+
+  - **Differential Privacy / DP-SGD:** Techniques to protect training data privacy by limiting influence of individual records. Why it matters: regulatory and ethical compliance for sensitive datasets. Example: "Training with DP-SGD reduced leakage risk for user data."
+
+  - **Federated Learning:** Decentralized training where clients keep data locally and share model updates. Why it matters: privacy-preserving collaboration across devices or organizations. Example: "Federated fine-tuning allowed personalization without centralizing PII."
+
+  - **On-Prem / Edge Inference:** Running models within customer-controlled infrastructure or on-device versus cloud inference. Why it matters: data residency, latency, and cost trade-offs. Example: "On-prem inference satisfied the bank's data residency requirements."
+
+  - **Multimodal:** Models that handle multiple modalities (text, image, audio, video). Why it matters: enables richer user experiences (e.g., visual QA, captioning). Example: "We built a multimodal assistant for image-inspection workflows."
+
+  - **Chain-of-Thought (CoT):** Prompting or training technique that encourages models to generate intermediate reasoning steps. Why it matters: can improve complex problem solving and explainability. Example: "Enable CoT prompts for multi-step math reasoning."
+
+  - **Prompt Template / Prompt Chaining:** Re-usable prompt formats or sequences of prompts that structure complex tasks. Why it matters: standardizes behavior and simplifies maintenance. Example: "Use a prompt template for policy-compliant summarization."
+
+  - **Temperature / Top-k / Top-p (Nucleus Sampling):** Decoding hyperparameters controlling randomness/diversity of generated text. Why it matters: tune for creativity vs. determinism. Example: "Set temperature=0.2 for factual outputs and 0.8 for creative copy."
+
+  - **Greedy / Beam Search / Sampling:** Decoding strategies with different trade-offs between speed, diversity, and optimality. Why it matters: affect response quality and latency. Example: "Beam search improved answer accuracy but increased latency."
+
+  - **Throughput / Latency / Cost-per-call:** Operational performance and billing considerations for inference. Why it matters: impacts UX and product economics. Example: "We optimize batch size to increase throughput and lower cost-per-call."
+
+  - **Autoscaling / Load Balancing:** Infrastructure patterns for handling variable inference traffic. Why it matters: reliability and cost-efficiency. Example: "Autoscaling kept latency stable during traffic spikes."
+
+  - **Model Registry / Model Card:** Tools and documentation for tracking model versions, metadata, and intended use. Why it matters: governance and reproducibility. Example: "Upload each release with a Model Card documenting limits and training data scope."
+
+  - **Dataset Card / Datasheet:** Structured documentation describing dataset provenance, collection methods, and limitations. Why it matters: transparency and data governance. Example: "Attach a Datasheet to any training dataset used for compliance reviews."
+
+  - **Licensing & Copyright (Training Data Rights):** Legal constraints around using datasets and generated outputs. Why it matters: reduces litigation and IP risk. Example: "Verify dataset licenses before using content for model training."
+
+  - **Synthetic Data / Data Augmentation:** Artificially generated data to expand training sets or protect privacy. Why it matters: addresses class imbalance and privacy requirements. Example: "Use synthetic examples to boost rare-case performance."
+
+  - **Adversarial Testing / Red-Teaming:** Stress-testing models to find failure modes and safety vulnerabilities. Why it matters: uncovers risks before production release. Example: "We ran a red-team exercise to probe prompt injection attacks."
+
+  - **Prompt Injection / Jailbreaks:** Attacks that manipulate prompt context to make models reveal secrets or violate policies. Why it matters: security risk in multi-tenant or untrusted input scenarios. Example: "Sanitize user prompts to reduce prompt-injection risk."
+
+  - **Retrieval Context Chunking / Overlap Strategy:** How documents are split before embedding (size and overlap). Why it matters: affects retrieval precision and answer completeness. Example: "We use 1,000-token chunks with 200-token overlap for long documents."
+
+  - **Hybrid Retrieval (BM25 + Embeddings):** Combining lexical and semantic search for better coverage. Why it matters: improves recall and precision in practical systems. Example: "Hybrid retrieval gave better results on short queries."
+
+  - **Observability / Monitoring (Latency, Errors, Drift, Safety Alerts):** Systems to track runtime model health and quality. Why it matters: enables rapid detection and remediation. Example: "Set alerts for increases in hallucination rates or API error spikes."
+
+  - **Cost Estimation (Compute FLOPs, Inference cost, Training cost):** Quantifying resources needed to train and serve models. Why it matters: budgeting and architecture tradeoffs. Example: "We estimated training FLOPs to decide between full fine-tuning vs. PEFT."
+
+  - **MLOps / ModelOps:** Processes and tooling for continuous training, deployment, and governance of models. Why it matters: production-grade lifecycle management and compliance. Example: "Implement MLOps pipelines for retraining and deployment rollbacks."
+
+  - **Backup & Rollback / Canary Deployments:** Safe deployment patterns to reduce risk when releasing model updates. Why it matters: minimizes exposure to regressions. Example: "Deploy new model to 5% of traffic via canary before full rollout."
+
+  - **Explainability / Interpretability:** Techniques that help understand model decisions (saliency, attention analysis, rationale...). Why it matters: trust, debugging, and regulatory reasons. Example: "Provide an explainability view for analysts investigating flagged outputs."
+
+  ---
+  `;
+
+  const reportMarkdown = `
+  # Research Report: Generative AI Applications
+
+  This report summarizes prominent generative AI use cases for enterprise and product teams. Each use case includes key business values, main technical challenges, common weak points, and a short list of representative implementations (name, link, one-line description).
+
+  ---
+
+  ## Conversational Agents & Chatbots
+  Generative conversational agents automate customer support, sales advice, and internal knowledge work by producing natural-language answers, triaging requests, and executing basic workflows. Business value includes reduced support costs, 24/7 availability, faster issue triage, and improved customer engagement; technical challenges include maintaining long-range context, delivering factually correct answers, latency and scaling, and secure integration with backend systems and identity.
+
+  Weak points include hallucinations (asserting incorrect facts), difficulty with long multi-turn domain-specific reasoning, privacy and compliance concerns, and ongoing prompt engineering. Representative implementations:
+  - **ChatGPT** — https://chat.openai.com — general-purpose conversational AI widely used for support, knowledge, and assistant flows.
+  - **Anthropic Claude** — https://www.anthropic.com/product — safety-focused assistant optimized for constrained, high-trust enterprise use cases.
+  - **Google Bard** — https://bard.google.com — Google’s conversational model with web grounding and multimodal integration.
+  - **Rasa** — https://rasa.com — open-source framework for building controllable, on-premises conversational assistants.
+
+  ---
+
+  ## Content Generation (Marketing, Articles, Reports)
+  Generative models produce marketing copy, blog posts, product descriptions, and reports at scale, enabling faster iteration and experimentation. Business value includes faster content pipelines, reduced agency costs, personalized messaging at scale, and improved A/B testing; challenges include controlling tone and brand voice, ensuring factual accuracy, and managing legal/compliance risks in automated publishing.
+
+  Weak points: potential for plagiarism or copyright concerns, repetitive or generic style, and regulatory or reputational risks if unreviewed content is published. Representative implementations:
+  - **Jasper** — https://www.jasper.ai — marketing-oriented text generation with templates for teams and campaigns.
+  - **Copy.ai** — https://www.copy.ai — quick marketing and social copy generator for non-technical users.
+  - **OpenAI GPT (GPT-4)** — https://openai.com — a general large-language model used for long-form and creative content generation.
+
+  ---
+
+  ## Code Generation & Developer Tools
+  AI-assisted coding provides inline completions, code synthesis from natural language, test generation, and documentation, accelerating developer productivity and onboarding. Business value: reduced time-to-market, fewer repetitive tasks, and improved developer ergonomics; technical challenges include ensuring security, correctness, licensing compliance for generated code, and tight IDE/CI integrations.
+
+  Weak points: generated code can include subtle bugs or insecure patterns, hallucinated APIs or dependencies, and ambiguous licensing of training-derived code; robust validation and human review remain required. Representative implementations:
+  - **GitHub Copilot** — https://github.com/features/copilot — AI pair programmer integrated with IDEs for inline suggestions and completions.
+  - **Tabnine** — https://www.tabnine.com — multi-language AI completions with on-prem deployment options.
+  - **Replit Ghostwriter** — https://replit.com/site/ghostwriter — inline code generation and assistance in the Replit IDE.
+  - **OpenAI Codex** — https://openai.com/blog/openai-codex — foundation model for translating natural language to code and automating developer workflows.
+
+  ---
+
+  ## Image Generation & Creative Design
+  Text-to-image and image-editing models create marketing visuals, concept art, UI assets, and product mockups from natural-language prompts, speeding design iteration and customization. Business value: rapid prototyping, personalized visuals at scale, and reduced creative production cost; technical challenges include fine-grained control over composition, style fidelity, high-resolution consistency, and IP/ethical filtering.
+
+  Weak points: inconsistent quality for complex scenes, potential recreation of copyrighted material, visual bias, and unpredictable artifacts; production usage needs guardrails and review. Representative implementations:
+  - **DALL·E 3** — https://openai.com/dall-e-3 — text-to-image generator with improved fidelity and adherence to prompts.
+  - **Midjourney** — https://www.midjourney.com — creative, stylistic image generation popular with designers and artists.
+  - **Stable Diffusion (Stability AI)** — https://stability.ai — open, extensible image generation models for on-prem and cloud deployment.
+  - **Adobe Firefly** — https://www.adobe.com/sensei/generative-ai/firefly.html — creative tools integrated into Adobe apps for designers.
+
+  ---
+
+  ## Video Generation & Editing
+  Generative video systems synthesize clips, animate images, and automate editing tasks (cuts, color grading, captions), enabling faster content production and personalization for marketing and training. Business value: lowered production costs, scalable personalized video campaigns, and fast iteration; technical challenges include temporal consistency, high compute for high-resolution outputs, and precise control over motion semantics.
+
+  Weak points: realism is limited for complex physical dynamics and long-form continuity, and production workloads are resource-intensive. Representative implementations:
+  - **Runway (Gen-2)** — https://runwayml.com — multimodal video generation and editing tools for creators.
+  - **Synthesia** — https://www.synthesia.io — avatar-based synthetic video creation for corporate training and marketing.
+  - **Pika Labs** — https://pikalabs.com — user-friendly text-to-video generation for short-form content.
+  - **Meta Make-A-Video (research)** — https://ai.facebook.com/research/publications/make-a-video/ — research prototype for text-to-video generation.
+
+  ---
+
+  ## Speech Synthesis & Voice Cloning
+  High-fidelity text-to-speech and voice cloning enable narrated content, personalized voice assistants, and accessible media such as audiobooks and podcasts. Business value: multilingual audio production at scale, brand voice consistency, and improved accessibility; challenges include natural prosody, emotional expressiveness, artifact reduction, and abuse prevention for voice cloning.
+
+  Weak points: deepfake risks, legal/consent issues, and limitations with rare languages or strong accents. Representative implementations:
+  - **ElevenLabs** — https://elevenlabs.io — high-quality TTS and voice cloning with fine style controls.
+  - **Descript Overdub** — https://www.descript.com/overdub — voice cloning geared to podcast editing and content creators.
+  - **Resemble.ai** — https://www.resemble.ai — real-time voice conversion and custom voice generation for products.
+  - **Google Cloud Text-to-Speech (WaveNet)** — https://cloud.google.com/text-to-speech — scalable neural TTS with natural prosody.
+
+  ---
+
+  ## Document Understanding & Automation
+  Generative models enhance OCR, extraction, summarization, contract analysis, and automated workflows for enterprise documents, increasing processing speed and reducing manual review. Business value: faster invoice and claims handling, automated contract triage, and improved compliance monitoring; technical challenges include handling heterogeneous layouts, domain-specific language, extraction accuracy, and secure processing of sensitive records.
+
+  Weak points: errors on noisy or complex documents, difficulty with nuanced legal/financial reasoning, and data residency or compliance constraints. Representative implementations:
+  - **Google Document AI** — https://cloud.google.com/document-ai — structured extraction and parser pipelines for enterprise documents.
+  - **Amazon Textract** — https://aws.amazon.com/textract — OCR and form/table extraction at scale.
+  - **UiPath Document Understanding** — https://www.uipath.com/product/document-understanding — RPA-integrated document parsing and classification.
+  - **ABBYY FlexiCapture** — https://www.abbyy.com — enterprise-grade data capture and extraction platform.
+
+  ---
+
+  ## Personalization & Recommendation
+  Generative and embedding-based systems create personalized marketing content, product recommendations, and adaptive user experiences by modeling user intent and context. Business value: increased conversions, higher retention, and improved lifetime value through tailored offers; challenges include real-time inference at scale, cold-start problems, privacy-preserving personalization, and robust evaluation metrics.
+
+  Weak points: risk of overfitting to short-term signals, filter bubbles, regulatory constraints (e.g., GDPR), and dependence on high-quality user data. Representative implementations:
+  - **Amazon Personalize** — https://aws.amazon.com/personalize — managed personalization service for individualized recommendations.
+  - **Dynamic Yield** — https://www.dynamicyield.com — personalization and optimization platform for web and product experiences.
+  - **Recombee** — https://www.recombee.com — recommender API with hybrid algorithms and real-time scoring.
+  - **Google Recommendations AI** — https://cloud.google.com/retail/recommendation-ai — retail-focused personalization at scale.
+
+  ---
+
+  ## Synthetic Data & Data Augmentation
+  Generative models produce synthetic datasets (tabular, image, or text) to augment training data for ML, enabling improved model robustness, privacy-safe sharing, and mitigation of class imbalance. Business value: accelerated model development, safer data sharing, and improved performance on minority classes; challenges include validating statistical fidelity, ensuring representativeness, and avoiding leakage of sensitive original records.
+
+  Weak points: synthetic data may embed existing biases or miss rare tail cases; trust requires rigorous statistical validation and domain expertise. Representative implementations:
+  - **Mostly AI** — https://mostly.ai — synthetic tabular data generation designed for statistical fidelity and privacy.
+  - **Gretel.ai** — https://gretel.ai — APIs for generating, anonymizing, and sharing synthetic data with privacy controls.
+  - **Hazy** — https://hazy.com — enterprise synthetic data for compliance and testing.
+  - **Synthesis AI** — https://synthesis.ai — synthetic image/video datasets for computer vision training.
+
+  ---
+
+  ## Drug Discovery & Molecular Design
+  Generative models accelerate discovery by proposing novel molecules, predicting protein structures, and designing candidate compounds, shortening R&D cycles and exploring large chemical spaces. Business value: reduced cost/time for lead identification, broader exploration of chemical spaces, and improved hit rates; challenges include accurate property prediction, integration with wet-lab workflows, interpretability, and regulatory validation.
+
+  Weak points: in-silico predictions often fail to translate to biological efficacy or safety, and limited high-quality labeled data can bias results. Representative implementations:
+  - **AlphaFold** — https://deepmind.com/research/case-studies/alphafold — protein structure prediction that accelerates target understanding and design.
+  - **Insilico Medicine** — https://insilico.com — generative chemistry and lead optimization platforms.
+  - **Atomwise** — https://www.atomwise.com — AI-driven virtual screening for small-molecule discovery.
+  - **BenevolentAI** — https://www.benevolent.com — AI platform combining knowledge graphs and generative models for drug research.
+
+  ---
+
+  ## Semantic Search & Knowledge Retrieval
+  Embedding-based retrieval and generative answer synthesis improve search by returning conceptually relevant documents and generating concise answers from proprietary knowledge bases. Business value: faster information discovery, better employee self-service, and improved customer support resolution; challenges include keeping vector indexes fresh, ensuring retrieval precision and provenance, and scaling hybrid retrieval+generation systems.
+
+  Weak points: potential for hallucinated answers lacking provenance, index freshness problems, and compute/storage costs for large vector stores. Representative implementations:
+  - **Pinecone** — https://www.pinecone.io — managed vector database for production semantic search.
+  - **Weaviate** — https://www.semi.technology — open-source vector search engine with knowledge-graph features.
+  - **Vespa** — https://vespa.ai — real-time search and recommendation engine with vector support.
+  - **Elastic with vectors** — https://www.elastic.co — search stack integrating vector similarity and traditional retrieval.
+
+  ---
+
+  ## Anomaly Detection & Predictive Maintenance
+  Generative and representation-learning models detect anomalies and predict equipment failures by modeling normal behavior and flagging deviations, reducing downtime and maintenance costs. Business value: lower operational risk, optimized maintenance schedules, and longer asset life; challenges include imbalanced failure data, evolving operating conditions, interpretability, and integrating predictions into workflows.
+
+  Weak points: false positives/negatives can erode trust, models may not generalize across equipment types, and labeled failure events are scarce. Representative implementations:
+  - **Anodot** — https://www.anodot.com — real-time anomaly detection for business metrics and operational signals.
+  - **DataRobot** — https://www.datarobot.com — automated ML platform with time-series and anomaly detection capabilities.
+  - **SparkCognition** — https://www.sparkcognition.com — industrial analytics and predictive maintenance solutions.
+  - **Uptake** — https://www.uptake.com — industrial AI for asset health and operational insights.
+
+  ---
+
+  **Appendix: Recommendations for Adoption**
+  - **Pilot first:** run focused pilots with clear success metrics and human-in-the-loop validation.
+  - **Governance:** prioritize privacy, provenance, and model-evaluation tooling (benchmarks, adversarial tests).
+  - **Hybrid architecture:** use retrieval-augmented generation, on-prem inference for sensitive data, and modular pipelines for monitoring and rollback.
+
+  Report prepared for internal research and strategic planning — validate vendor claims with technical pilots and security reviews before production rollout.
+
+  `;
+
+  // Utility functions
+  function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function extractTermsFromVocab(md) {
+    const lines = md.split(/\n/);
+    const terms = [];
+    const re = /^\s*- \*\*(.+?)\*\*/; // lines starting '- **term**'
+    for (const l of lines) {
+      const m = l.match(re);
+      if (m) {
+        terms.push(m[1].trim());
+      }
+    }
+    return terms;
+  }
+
+  function countExplicit(report, term) {
+    // Match the exact phrase (case-insensitive), allow punctuation differences
+    const t = term.replace(/\s*\(.+?\)/g, ''); // remove parentheses for matching
+    const esc = escapeRegExp(t.trim());
+    const regex = new RegExp('\\b' + esc + '\\b', 'gi');
+    const matches = report.match(regex);
+    return matches ? matches.length : 0;
+  }
+
+  function tokenizeForImplicit(term) {
+    // split term into meaningful tokens, remove short words
+    return term.toLowerCase().replace(/[()/:,·\-]/g, ' ').split(/\s+/).filter(w => w && w.length>2 && !['and','the','for','with','vs','e.g','i.e'].includes(w));
+  }
+
+  function countImplicit(report, term) {
+    const tokens = tokenizeForImplicit(term);
+    let sum = 0;
+    for (const tk of tokens) {
+      const esc = escapeRegExp(tk);
+      const regex = new RegExp('\\b' + esc + '\\w*\\b', 'gi'); // allow suffixes
+      const matches = report.match(regex);
+      if (matches) sum += matches.length;
+    }
+    return sum;
+  }
+
+  function computeData() {
+    const terms = extractTermsFromVocab(vocabMarkdown);
+    const reportText = reportMarkdown.replace(/[`*\[\]]/g, ' ');
+    const nodes = [];
+    const links = [];
+    // central report node
+    nodes.push({id: 'Report', group: 0, size: 30});
+    const results = [];
+    for (const t of terms) {
+      const explicit = countExplicit(reportText, t);
+      const implicit = countImplicit(reportText, t);
+      const total = explicit + implicit;
+      results.push({term: t, explicit, implicit, total});
+      nodes.push({id: t, group: 1, size: Math.max(6, 6 + Math.log(1+total)*6)});
+      // create two links: explicit (blue) and implicit (orange)
+      links.push({source: t, target: 'Report', type: 'explicit', weight: Math.max(0.5, explicit)});
+      links.push({source: t, target: 'Report', type: 'implicit', weight: Math.max(0.5, implicit)});
+    }
+    return {nodes, links, results};
+  }
+
+  // Rendering with D3 (load minimal inline D3)
+  // We'll include a small D3 v6 from CDN; if offline, fallback to simple SVG
+  (function loadD3AndRender(){
+    const s = document.createElement('script');
+    s.src = 'https://d3js.org/d3.v7.min.js';
+    s.onload = () => renderGraph();
+    s.onerror = () => { document.getElementById('chart').innerText = 'Failed to load D3 from CDN.'; };
+    document.head.appendChild(s);
+  })();
+
+  function renderGraph() {
+    const d3 = window.d3;
+    const container = document.getElementById('chart');
+    container.innerHTML = '';
+    const width = container.clientWidth || window.innerWidth;
+    const height = 720;
+    const svg = d3.select('#chart').append('svg').attr('width', width).attr('height', height);
+
+    const data = computeData();
+
+    // Scales
+    const linkScale = d3.scaleLinear().domain([0, d3.max(data.links, d=>d.weight)||1]).range([1, 8]);
+
+    const simulation = d3.forceSimulation(data.nodes)
+      .force('link', d3.forceLink().id(d=>d.id).distance(120).strength(0.2))
+      .force('charge', d3.forceManyBody().strength(-200))
+      .force('center', d3.forceCenter(width/2, height/2))
+      .force('collision', d3.forceCollide().radius(d => d.size+8));
+
+    // draw links (explicit and implicit separately)
+    const link = svg.append('g').selectAll('line')
+      .data(data.links.filter(l=>l.weight>0))
+      .enter().append('line')
+      .attr('stroke-width', d => linkScale(d.weight))
+      .attr('stroke', d => d.type==='explicit' ? 'steelblue' : 'orange')
+      .attr('opacity', 0.7);
+
+    const node = svg.append('g').selectAll('g')
+      .data(data.nodes)
+      .enter().append('g')
+      .call(d3.drag()
+        .on('start', (event,d)=>{ if(!event.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+        .on('drag', (event,d)=>{ d.fx=event.x; d.fy=event.y; })
+        .on('end', (event,d)=>{ if(!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }))
+    ;
+
+    node.append('circle')
+      .attr('r', d=>d.size)
+      .attr('fill', d=> d.id==='Report' ? '#222' : '#69b3a2')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 1.5)
+      .on('mouseover', (event,d)=> showTooltip(event, d))
+      .on('mouseout', hideTooltip);
+
+    node.append('text')
+      .attr('x', 0)
+      .attr('y', d=>d.size + 12)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 11)
+      .text(d=> d.id.length > 30 ? d.id.slice(0,27)+'...' : d.id);
+
+    simulation.on('tick', ()=>{
+      link.attr('x1', d=>d.source.x)
+          .attr('y1', d=>d.source.y)
+          .attr('x2', d=>d.target.x)
+          .attr('y2', d=>d.target.y);
+
+      node.attr('transform', d=>`translate(${d.x},${d.y})`);
+    });
+
+    // tooltip
+    const tooltip = document.getElementById('tooltip');
+    function showTooltip(event, d) {
+      if (d.id === 'Report') {
+        tooltip.innerHTML = '<b>Report</b>';
+      } else {
+        const row = data.results.find(r=>r.term===d.id) || {explicit:0, implicit:0, total:0};
+        tooltip.innerHTML = `<b>${d.id}</b><br>Explicit: ${row.explicit}<br>Implicit: ${row.implicit}<br>Total: ${row.total}`;
+      }
+      tooltip.style.left = (event.pageX + 12) + 'px';
+      tooltip.style.top = (event.pageY + 12) + 'px';
+      tooltip.style.display = 'block';
+    }
+    function hideTooltip(){ tooltip.style.display='none'; }
+
+    // Summary table
+    const tableDiv = document.getElementById('table');
+    const sorted = data.results.slice().sort((a,b)=>b.total - a.total);
+    let html = '<h3 style="margin-top:8px;">Term usage summary (top terms)</h3>';
+    html += '<table><thead><tr><th>Term</th><th>Explicit</th><th>Implicit</th><th>Total</th></tr></thead><tbody>';
+    for (const r of sorted) html += `<tr><td>${r.term}</td><td>${r.explicit}</td><td>${r.implicit}</td><td>${r.total}</td></tr>`;
+    html += '</tbody></table>';
+    tableDiv.innerHTML = html;
+
+    // Export PNG
+    document.getElementById('btn-export').onclick = () => exportPNG(svg.node());
+    document.getElementById('btn-refresh').onclick = () => { simulation.stop(); renderGraph(); };
+
+    function exportPNG(svgNode) {
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgNode);
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      const svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
+      const url = URL.createObjectURL(svgBlob);
+      img.onload = function() {
+        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        const png = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = png; a.download = 'genai_vocab_relationship.png';
+        a.click();
+      };
+      img.src = url;
+    }
+  }
+
+  </script>
+</body>
+</html>
